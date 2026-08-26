@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriUtils;
 
@@ -92,14 +92,14 @@ public class ServiceProxyController {
         return forward("GET", crewBaseUrl + "/api/admin/crew", null);
     }
 
-    @GetMapping("/crew/flights")
-    public ResponseEntity<String> crewFlights(
-            @RequestParam(required = false) String date) {
-        String url = crewBaseUrl + "/api/admin/flights";
-        if (date != null && !date.isBlank()) {
-            url += "?date=" + UriUtils.encodeQueryParam(date, StandardCharsets.UTF_8);
-        }
-        return forward("GET", url, null);
+    @GetMapping("/crew/flights/{flightId}")
+    public ResponseEntity<String> flight(@PathVariable String flightId) {
+        return forward("GET", bookingBaseUrl + "/api/flights/" + path(flightId), null);
+    }
+
+    @GetMapping("/crew/flights/{flightId}/crew")
+    public ResponseEntity<String> flightCrew(@PathVariable String flightId) {
+        return forward("GET", crewBaseUrl + "/api/flights/" + path(flightId) + "/crew", null);
     }
 
     @GetMapping("/crew/operations")
@@ -109,25 +109,38 @@ public class ServiceProxyController {
 
     @GetMapping("/partner/requests")
     public ResponseEntity<String> partnerRequests() {
-        return forward("GET", partnerBaseUrl + "/api/admin/partner/requests", null);
+        return forward("GET", partnerBaseUrl + "/partner/requests", null);
     }
 
     @GetMapping("/partner/requests/{id}")
     public ResponseEntity<String> partnerRequest(@PathVariable String id) {
-        return forward("GET", partnerBaseUrl + "/api/admin/partner/requests/" + path(id), null);
+        return forward("GET", partnerBaseUrl + "/partner/requests/" + path(id), null);
     }
 
     @PatchMapping("/partner/requests/{id}/status")
     public ResponseEntity<String> changePartnerRequestStatus(
             @PathVariable String id,
-            @RequestBody String body,
+            @RequestBody PartnerStatusRequest body,
             HttpServletRequest request) {
+        String status = body.status() == null
+                ? ""
+                : body.status().trim().toUpperCase(Locale.ROOT);
+        if (!status.equals("APPROVED") && !status.equals("REJECTED")) {
+            return ResponseEntity.badRequest()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"success\":false,\"data\":null,\"message\":\"status는 APPROVED 또는 REJECTED여야 합니다.\"}");
+        }
+
+        String statusQuery = UriUtils.encodeQueryParam(status, StandardCharsets.UTF_8);
         ResponseEntity<String> response = forward(
                 "PATCH",
-                partnerBaseUrl + "/api/admin/partner/requests/" + path(id) + "/status",
-                body);
+                partnerBaseUrl + "/partner/requests/" + path(id) + "/status?status=" + statusQuery,
+                null);
         recordWrite(request, "PARTNER_REQUEST_STATUS", "PARTNER_REQUEST", id, response);
         return response;
+    }
+
+    private record PartnerStatusRequest(String status, String reason) {
     }
 
     private ResponseEntity<String> forward(String method, String url, String body) {
