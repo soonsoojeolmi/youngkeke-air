@@ -52,6 +52,25 @@ export type AuditItem = {
   ip: string;
 };
 
+export type LabOverview = {
+  enabled: boolean;
+  warning: string;
+  currentLoginId: string;
+  currentRole: string;
+  scenarios: string[];
+};
+
+export type LabAdminProfile = {
+  id: number;
+  loginId: string;
+  displayName: string;
+  role: string;
+  phone: string;
+  email: string;
+  employeeNumber: string;
+  flag?: string | null;
+};
+
 type ApiResponse<T> = {
   success: boolean;
   data: T | null;
@@ -240,6 +259,31 @@ export async function fetchAuditLogs(): Promise<AuditItem[]> {
     result: text(item, "result"),
     ip: text(item, "clientIp", "client_ip", "ip"),
   }));
+}
+
+export async function fetchLabOverview(): Promise<LabOverview> {
+  const body = (await request("/api/admin/lab/overview")) as ApiResponse<LabOverview>;
+  if (!body.data) throw new Error(body.message || "보안 실습 환경이 비활성화되어 있습니다.");
+  return body.data;
+}
+
+export async function fetchLabProfile(id: number): Promise<unknown> {
+  return request(`/api/admin/lab/admins/${id}`);
+}
+
+export async function fetchLabExport(): Promise<unknown> {
+  return request("/api/admin/lab/export?scope=all");
+}
+
+export async function fetchLabDebug(): Promise<unknown> {
+  return request("/api/admin/lab/debug?mode=verbose");
+}
+
+export async function checkLabWeakPassword(password: string): Promise<unknown> {
+  return request("/api/admin/lab/password-check", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
 }
 
 export function errorMessage(error: unknown): string {

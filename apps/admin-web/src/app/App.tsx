@@ -3,7 +3,7 @@ import {
   Activity, BadgeCheck, Bell, BookOpenCheck, Building2, CalendarDays, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, FileClock, Headphones,
   LayoutDashboard, LogOut, Mail, Menu, MessageSquareText, Plane, RefreshCw,
-  Search, ShieldCheck, TicketCheck, UserRound, UsersRound, X,
+  Search, ShieldAlert, ShieldCheck, TicketCheck, UserRound, UsersRound, X,
 } from "lucide-react";
 import {
   AuditItem,
@@ -17,12 +17,17 @@ import {
   fetchInquiries,
   fetchPartnerRequests,
   fetchReservations,
+  fetchLabDebug,
+  fetchLabExport,
+  fetchLabOverview,
+  fetchLabProfile,
+  checkLabWeakPassword,
   saveInquiryAnswer,
   savePartnerStatus,
 } from "./adminApi";
 import "./admin.css";
 
-type PageId = "dashboard" | "reservations" | "inquiries" | "crew" | "partners" | "audit";
+type PageId = "dashboard" | "reservations" | "inquiries" | "crew" | "partners" | "audit" | "security-lab";
 const navItems = [
   { id: "dashboard" as PageId, label: "통합 대시보드", icon: LayoutDashboard },
   { id: "reservations" as PageId, label: "예약 관리", icon: TicketCheck },
@@ -30,6 +35,7 @@ const navItems = [
   { id: "crew" as PageId, label: "직원·승무원", icon: UsersRound },
   { id: "partners" as PageId, label: "협력사 요청", icon: Building2 },
   { id: "audit" as PageId, label: "작업 이력", icon: FileClock },
+  { id: "security-lab" as PageId, label: "보안 취약점 실습", icon: ShieldAlert },
 ];
 const pageCopy: Record<PageId, { eyebrow: string; title: string; description: string }> = {
   dashboard: { eyebrow: "OVERVIEW", title: "통합 대시보드", description: "항공 서비스 운영 현황을 한눈에 확인하세요." },
@@ -38,6 +44,7 @@ const pageCopy: Record<PageId, { eyebrow: string; title: string; description: st
   crew: { eyebrow: "CREW OPERATIONS", title: "직원·승무원 현황", description: "직원 근무 상태와 배정 항공편을 확인합니다." },
   partners: { eyebrow: "PARTNER REQUESTS", title: "협력사 요청 관리", description: "협력사 요청을 검토하고 승인 또는 반려합니다." },
   audit: { eyebrow: "AUDIT LOG", title: "관리자 작업 이력", description: "관리자 계정의 주요 처리 내역을 확인합니다." },
+  "security-lab": { eyebrow: "SECURITY LAB", title: "웹 취약점 실습", description: "합성 데이터로 권한 검증·정보 노출 취약점을 점검합니다." },
 };
 
 function Brand({ dark = false }: { dark?: boolean }) { return <div className={`brand ${dark ? "brand--dark" : ""}`}><div className="brand__mark"><Plane size={23} /></div><div><strong>YOUNGKEKE AIR</strong><span>OPERATIONS CENTER</span></div></div> }
@@ -219,8 +226,19 @@ function Login({
   );
 }
 
+function allowedPages(role: string): PageId[] {
+  if (role === "AUDITOR") return ["audit", "security-lab"];
+  if (role === "OPERATOR") return ["dashboard", "reservations", "inquiries", "crew", "partners", "security-lab"];
+  return navItems.map((item) => item.id);
+}
+
+function defaultPage(role: string): PageId {
+  return role === "AUDITOR" ? "audit" : "dashboard";
+}
+
 function Sidebar({ page, setPage, onLogout, open, onClose, admin }: { page: PageId; setPage: (p: PageId) => void; onLogout: () => void; open: boolean; onClose: () => void; admin: AdminSession }) {
-  return <>{open && <button className="sidebar-scrim" onClick={onClose} aria-label="메뉴 닫기" />}<aside className={`sidebar ${open ? "is-open" : ""}`}><div className="sidebar__brand"><Brand dark /><button className="sidebar__close" onClick={onClose}><X size={21} /></button></div><p className="sidebar__label">MANAGEMENT</p><nav>{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => { setPage(item.id); onClose() }}><Icon size={19} /><span>{item.label}</span></button> })}</nav><div className="sidebar__support"><div className="support-icon"><Headphones size={18} /></div><div><strong>시스템 문의</strong><span>운영 담당자</span></div></div><div className="sidebar__profile"><div className="avatar">{admin.displayName.slice(0,1)}</div><div><strong>{admin.displayName}</strong><span>{admin.role}</span></div><button onClick={onLogout} title="로그아웃"><LogOut size={18} /></button></div></aside></>;
+  const visibleItems = navItems.filter((item) => allowedPages(admin.role).includes(item.id));
+  return <>{open && <button className="sidebar-scrim" onClick={onClose} aria-label="메뉴 닫기" />}<aside className={`sidebar ${open ? "is-open" : ""}`}><div className="sidebar__brand"><Brand dark /><button className="sidebar__close" onClick={onClose}><X size={21} /></button></div><p className="sidebar__label">MANAGEMENT</p><nav>{visibleItems.map((item) => { const Icon = item.icon; return <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => { setPage(item.id); onClose() }}><Icon size={19} /><span>{item.label}</span></button> })}</nav><div className="sidebar__support"><div className="support-icon"><Headphones size={18} /></div><div><strong>시스템 문의</strong><span>운영 담당자</span></div></div><div className="sidebar__profile"><div className="avatar">{admin.displayName.slice(0,1)}</div><div><strong>{admin.displayName}</strong><span>{admin.role}</span></div><button onClick={onLogout} title="로그아웃"><LogOut size={18} /></button></div></aside></>;
 }
 function Topbar({ onMenu, admin }: { onMenu: () => void; admin: AdminSession }) { const now = new Date(); return <header className="topbar"><button className="mobile-menu" onClick={onMenu}><Menu size={22} /></button><div className="topbar__context"><CalendarDays size={17} /><span>{now.toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}</span><i /><span>운영센터 KST {now.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span></div><div className="topbar__actions"><button className="icon-button"><Bell size={19} /></button><div className="topbar__user"><div className="avatar avatar--small">{admin.displayName.slice(0,1)}</div><div><strong>{admin.displayName}</strong><span>{admin.role}</span></div><ChevronDown size={15} /></div></div></header> }
 function PageHeading({ page }: { page: PageId }) { const copy = pageCopy[page]; return <div className="page-heading"><span>{copy.eyebrow}</span><h1>{copy.title}</h1><p>{copy.description}</p></div> }
@@ -275,6 +293,33 @@ function CrewPage({crew,error,reload}:{crew:CrewMember[];error:string;reload:()=
 
 function PartnersPage({partners,error,reload,notify}:{partners:PartnerRequest[];error:string;reload:()=>Promise<void>;notify:(m:string)=>void}){const[search,setSearch]=useState(""),[filter,setFilter]=useState("전체 상태"),[selected,setSelected]=useState<PartnerRequest|null>(null),[reason,setReason]=useState(""),[saving,setSaving]=useState(false),[page,setPage]=useState(1);const options=["전체 상태",...Array.from(new Set(partners.map((x)=>x.status)))];const filtered=partners.filter((x)=>(filter==="전체 상태"||x.status===filter)&&`${x.id}${x.company}${x.type}`.toLowerCase().includes(search.toLowerCase()));const safePage=Math.min(page,Math.max(1,Math.ceil(filtered.length/PAGE_SIZE)));const paged=filtered.slice((safePage-1)*PAGE_SIZE,safePage*PAGE_SIZE);async function changeStatus(status:"APPROVED"|"REJECTED"){if(!selected)return;if(status==="REJECTED"&&!reason.trim()){notify("반려 사유를 입력해주세요.");return}setSaving(true);try{await savePartnerStatus(selected.id,status,reason.trim());notify(`협력사 요청이 ${status==="APPROVED"?"승인":"반려"} 처리되었습니다.`);setSelected(null);setReason("");await reload()}catch(error){notify(errorMessage(error))}finally{setSaving(false)}}return <><section className="panel page-panel"><SectionTitle title="협력사 요청 목록" subtitle={`협력사 서비스 조회 결과 ${partners.length}건`}/><DataError message={error}/><Toolbar value={search} setValue={(value)=>{setSearch(value);setPage(1)}} placeholder="요청번호, 협력사명, 요청 내용 검색" filter={filter} setFilter={(value)=>{setFilter(value);setPage(1)}} options={options} onRefresh={()=>{setPage(1);void reload()}}/><div className="table-wrap"><table><thead><tr><th>요청번호</th><th>협력사</th><th>요청 내용</th><th>담당자</th><th>접수일</th><th>상태</th><th/></tr></thead><tbody>{paged.length?paged.map((x)=><tr key={x.id}><td className="strong-cell">{x.id}</td><td>{x.company}</td><td>{x.type}</td><td>{x.manager}</td><td>{x.createdAt}</td><td><StatusPill value={x.status}/></td><td><button className="table-button" onClick={()=>{setSelected(x);setReason(x.reason||"")}}>검토</button></td></tr>):<EmptyRow colSpan={7}/>}</tbody></table></div><PaginationControls page={safePage} total={filtered.length} onPageChange={setPage}/></section>{selected&&<div className="modal-layer" onMouseDown={(e)=>e.target===e.currentTarget&&setSelected(null)}><section className="modal"><button className="modal__close" onClick={()=>setSelected(null)}><X size={20}/></button><span className="section-kicker">PARTNER REQUEST</span><h2>협력사 요청 검토</h2><div className="modal-card"><span>요청번호</span><strong>{selected.id}</strong><span>협력사</span><strong>{selected.company}</strong><span>담당자</span><strong>{selected.manager}</strong><span>요청 내용</span><strong>{selected.type}</strong></div><label className="answer-field"><span>승인·반려 사유</span><textarea value={reason} onChange={(e)=>setReason(e.target.value)} rows={4} placeholder="실제 처리 사유를 입력하세요. 반려 시 필수입니다."/></label><div className="modal__actions"><button className="danger-button" disabled={saving} onClick={()=>void changeStatus("REJECTED")}><X size={17}/> 반려</button><button className="primary-button" disabled={saving} onClick={()=>void changeStatus("APPROVED")}><Check size={17}/> 승인</button></div></section></div>}</>}
 
+function SecurityLabPage() {
+  const [overview,setOverview]=useState<Awaited<ReturnType<typeof fetchLabOverview>>|null>(null);
+  const [profileId,setProfileId]=useState("1");
+  const [password,setPassword]=useState("");
+  const [result,setResult]=useState<unknown>(null);
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{void run(async()=>{setOverview(await fetchLabOverview())})},[]);
+
+  async function run(action:()=>Promise<void>){setLoading(true);setError("");try{await action()}catch(reason){setError(errorMessage(reason))}finally{setLoading(false)}}
+  function show(value:unknown){setResult(value)}
+
+  return <div className="security-lab">
+    <div className="lab-warning"><ShieldAlert size={24}/><div><strong>LAB ONLY · 의도적으로 취약한 교육 환경</strong><p>아래 개인정보·계좌·토큰·경로는 전부 합성 데이터입니다. 운영 DB와 실제 비밀번호는 변경하지 않습니다.</p></div></div>
+    {overview&&<section className="panel lab-overview"><SectionTitle title="실습 세션" subtitle={`${overview.currentLoginId} · ${overview.currentRole}`}/><div className="lab-scenarios">{overview.scenarios.map((scenario,index)=><span key={scenario}>LAB-0{index+1} {scenario}</span>)}</div></section>}
+    <div className="lab-grid">
+      <section className="panel lab-card"><span>LAB-01</span><h2>IDOR / 객체 권한 검증 누락</h2><p>현재 관리자와 관계없이 URL의 숫자만 바꿔 다른 합성 프로필을 조회합니다.</p><label>프로필 ID<input value={profileId} onChange={(event)=>setProfileId(event.target.value)} inputMode="numeric"/></label><button onClick={()=>void run(async()=>show(await fetchLabProfile(Number(profileId))))} disabled={loading}>프로필 조회</button></section>
+      <section className="panel lab-card"><span>LAB-02</span><h2>불충분한 역할 검증</h2><p>OPERATOR 또는 AUDITOR도 SUPER_ADMIN 전용이어야 할 합성 내보내기에 접근할 수 있습니다.</p><button onClick={()=>void run(async()=>show(await fetchLabExport()))} disabled={loading}>전체 관리자 내보내기</button></section>
+      <section className="panel lab-card"><span>LAB-03</span><h2>상세 오류 정보 노출</h2><p>배포 경로·가짜 JDBC 주소·가짜 토큰이 상세 응답에 포함됩니다.</p><button onClick={()=>void run(async()=>show(await fetchLabDebug()))} disabled={loading}>상세 디버그 응답</button></section>
+      <section className="panel lab-card"><span>LAB-04</span><h2>약한 비밀번호 정책</h2><p>실제 계정을 바꾸지 않고, 4자 이상이면 통과하는 취약 정책을 재현합니다.</p><label>실습 문자열<input value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="예: 1234"/></label><button onClick={()=>void run(async()=>show(await checkLabWeakPassword(password)))} disabled={loading}>정책 검사</button></section>
+    </div>
+    {error&&<div className="lab-result lab-result--error"><strong>요청 실패</strong><pre>{error}</pre></div>}
+    {result!==null&&<div className="lab-result"><strong>실습 API 응답</strong><pre>{JSON.stringify(result,null,2)}</pre></div>}
+  </div>;
+}
+
 function AuditPage({audit,error,reload}:{audit:AuditItem[];error:string;reload:()=>void}){const[search,setSearch]=useState(""),[filter,setFilter]=useState("전체 결과"),[page,setPage]=useState(1);const filtered=audit.filter((x)=>(filter==="전체 결과"||x.result===filter)&&`${x.adminLoginId}${x.action}${x.target}${x.ip}`.toLowerCase().includes(search.toLowerCase()));const safePage=Math.min(page,Math.max(1,Math.ceil(filtered.length/PAGE_SIZE)));const paged=filtered.slice((safePage-1)*PAGE_SIZE,safePage*PAGE_SIZE);return <section className="panel page-panel"><SectionTitle title="작업 이력" subtitle="admin_db에 서버가 기록한 실제 감사 로그입니다."/><DataError message={error}/><Toolbar value={search} setValue={(value)=>{setSearch(value);setPage(1)}} placeholder="관리자, 작업 내용, 대상, IP 검색" filter={filter} setFilter={(value)=>{setFilter(value);setPage(1)}} options={["전체 결과","SUCCESS","FAILURE"]} onRefresh={()=>{setPage(1);reload()}}/><div className="audit-info"><ShieldCheck size={19}/><p><strong>감사 로그 안내</strong>작업 이력은 보안 정책에 따라 기록되며 임의로 수정하거나 삭제할 수 없습니다.</p></div><div className="table-wrap"><table><thead><tr><th>일시</th><th>관리자</th><th>작업 종류</th><th>작업 대상</th><th>상세</th><th>접속 IP</th><th>결과</th></tr></thead><tbody>{paged.length?paged.map((x)=><tr key={x.id}><td>{x.time}</td><td>{x.adminLoginId}</td><td>{x.action}</td><td className="strong-cell">{x.target}</td><td>{x.detail}</td><td className="mono-cell">{x.ip}</td><td><StatusPill value={x.result}/></td></tr>):<EmptyRow colSpan={7}/>}</tbody></table></div><PaginationControls page={safePage} total={filtered.length} onPageChange={setPage}/></section>}
 
 export default function App() {
@@ -310,6 +355,7 @@ export default function App() {
 
         if (active && body.success && body.data) {
           setAdmin(body.data);
+          setPage(defaultPage(body.data.role));
         }
       } catch {
         // 서버 연결 전에는 로그인 화면을 표시합니다.
@@ -354,6 +400,14 @@ export default function App() {
 
   useEffect(() => {
     if (!admin) return;
+    if (admin.role === "AUDITOR") {
+      void loadAudit();
+      return;
+    }
+    if (admin.role === "OPERATOR") {
+      void Promise.all([loadReservations(),loadInquiries(),loadCrew(),loadPartners()]);
+      return;
+    }
     void Promise.all([loadReservations(),loadInquiries(),loadCrew(),loadPartners(),loadAudit()]);
   }, [admin?.id]);
 
@@ -364,6 +418,7 @@ export default function App() {
 
   function login(session: AdminSession) {
     setAdmin(session);
+    setPage(defaultPage(session.role));
   }
 
   async function logout() {
@@ -443,6 +498,8 @@ export default function App() {
           )}
 
           {page === "audit" && <AuditPage audit={audit} error={errors.audit||""} reload={()=>void loadAudit()} />}
+
+          {page === "security-lab" && <SecurityLabPage />}
         </main>
       </div>
 
